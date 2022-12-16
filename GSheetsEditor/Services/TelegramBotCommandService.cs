@@ -54,11 +54,6 @@ namespace GSheetsEditor.Services
                 return;
             }
 
-            //if (commandTokens.Length > 2)
-            //{
-            //    await client.SendTextMessageAsync(chatID, "Commands can take only 1 argument");
-            //    return;
-            //}
             object commandArgument;
 
             if (commandTokens.Length >= 2)
