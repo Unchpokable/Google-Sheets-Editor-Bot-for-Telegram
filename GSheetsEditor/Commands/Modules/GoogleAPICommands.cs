@@ -39,6 +39,11 @@ namespace GSheetsEditor.Commands.Modules
         [Command("/read")]
         public static CommandExecutionResult ReadData(object parameter)
         {
+            if (parameter == null || parameter.GetType() == typeof(object))
+            {
+                return new CommandExecutionResult("Usage: /read {cell_from:cell_to} for fetch multiple values or /read {cell} for read single value");
+            }
+
             if (!ValidateCell(parameter, out CommandExecutionResult errorMessage))
                 return errorMessage;
 
@@ -95,11 +100,6 @@ namespace GSheetsEditor.Commands.Modules
 
         private static bool ValidateCell(object parameter, out CommandExecutionResult errorMessage)
         {
-            if (parameter == null || parameter.GetType() == typeof(object))
-            {
-                errorMessage = new CommandExecutionResult("Usage: /read {cell_from:cell_to} for fetch multiple values or /read {cell} for read single value");
-                return false;
-            }
             if (parameter is not string cell)
             {
                 errorMessage = new CommandExecutionResult("given object is not string. How TF did you make this happen, you bastard???");
