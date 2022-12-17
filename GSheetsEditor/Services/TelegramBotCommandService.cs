@@ -11,6 +11,7 @@ using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.InputFiles;
 
 namespace GSheetsEditor.Services
 {
@@ -65,7 +66,8 @@ namespace GSheetsEditor.Services
 
             var executionResult = await _commandsService.ExecuteAsync(commandTokens[0], commandArgument);
 
-            await client.SendTextMessageAsync(chatID, executionResult?.Result?.ToString());
+            //await client.SendTextMessageAsync(chatID, executionResult?.Result?.ToString());
+            await RouteReply(chatID, client, executionResult);
         }
 
         private async Task HandlePollingErrorAsync(ITelegramBotClient client, Exception exception, CancellationToken ct)
@@ -77,6 +79,38 @@ namespace GSheetsEditor.Services
             };
 
             Console.Write(errorMessage);
+        }
+
+        private async Task RouteReply(ChatId chatID, ITelegramBotClient client, CommandExecutionResult commandResult)
+        {
+            if (commandResult == null)
+                await client.SendTextMessageAsync(chatID, "Command has not returned reply");
+
+            try
+            {
+                if (commandResult.ResultType == typeof(Uri))
+                {
+                    await using Stream stream = new FileStream(((Uri)commandResult.Result).LocalPath, FileMode.Open, FileAccess.Read);
+                    await client.SendDocumentAsync(chatID, new InputOnlineFile(stream, $"table_tableid.xlsx"));
+                    Task.Run(async () => 
+                    {
+                        await Task.Delay(3000);
+                        System.IO.File.Delete(((Uri)commandResult.Result).LocalPath);
+                    });
+                }
+                else 
+                    await client.SendTextMessageAsync(chatID, commandResult.Result.ToString());
+            }
+
+            catch (ApiRequestException exception)
+            {
+                await client.SendTextMessageAsync(chatID, "Command returned value that cause Telegram API error");
+            }
+
+            catch (Exception exception) 
+            {
+                await client.SendTextMessageAsync(chatID, $"Critical System Error: {exception.Message}\nIf you see this message please contact bot support");
+            }
         }
     }
 }
