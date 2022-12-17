@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Telegram.Bot.Types.InputFiles;
 
 namespace GSheetsEditor.Commands
 {
@@ -16,8 +17,12 @@ namespace GSheetsEditor.Commands
                 return;
             }
 
-            Result = result;
             ResultType = result.GetType();
+
+            if (!(ResultType == typeof(string) || ResultType == typeof(Uri)))
+                throw new ArgumentException("Command return type should be a <string> for sending a text reply or <Uri> for sending files.");
+
+            Result = result;
         }
 
         public object Result { get; init; }
