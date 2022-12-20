@@ -237,7 +237,7 @@ namespace GSheetsEditor.Commands.Modules
             if (_boundSpreadsheets.Keys.Count == 0)
                 return new CommandExecutionResult($"No sheets bound to user {arg.UserID}");
 
-            return new CommandExecutionResult(string.Join('\n', _boundSpreadsheets[arg.UserID]));
+            return new CommandExecutionResult(string.Join('\n', _boundSpreadsheets[arg.UserID].Select(sheet => sheet.Properties?.Title ?? "Untitled spreadsheet")));
         }
 
         [Command("/switch")]
@@ -292,7 +292,6 @@ namespace GSheetsEditor.Commands.Modules
             var response = files.Execute();
             var counter = 0;
             var failcounter = 0;
-            var resplystring = new StringBuilder();
 
             foreach (var file in response.Files)
             {
