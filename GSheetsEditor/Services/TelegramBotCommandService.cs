@@ -32,7 +32,9 @@ namespace GSheetsEditor.Services
             _commandsService.BindModule(typeof(GoogleAPICommands));
 
             _client.StartReceiving(HandleUpdateAsync, HandlePollingErrorAsync, recieverOptions, cancellationToken: cts.Token);
-            Console.WriteLine("Bot ready");
+#if DEBUG
+            Console.WriteLine($"[{DateTime.Now} :: INFO] Bot ready");
+#endif
         }
 
         private TelegramBotClient _client;
@@ -41,6 +43,26 @@ namespace GSheetsEditor.Services
 
         private async Task HandleUpdateAsync(ITelegramBotClient client, Update update, CancellationToken ct)
         {
+            if (update.CallbackQuery != null)
+            {
+                await ProcessCallbackQuerry(client, update.CallbackQuery, ct);
+                return;
+            }
+
+            await ProcessCommand(client, update, ct);
+        }
+
+        private async Task ProcessCallbackQuerry(ITelegramBotClient client, CallbackQuery callbackQuerry, CancellationToken ct)
+        {
+            if (callbackQuerry.Data is not string querry)
+                return;
+
+            var userID = callbackQuerry.Message.Chat.Id;
+            await ProcessCommand(client, userID, callbackQuerry.Data, ct);
+        }
+
+        private async Task ProcessCommand(ITelegramBotClient client, Update update, CancellationToken ct)
+        {
             if (update.Message is not { } message)
                 return;
             if (message.Text is not { } messageText)
@@ -48,7 +70,12 @@ namespace GSheetsEditor.Services
 
             var chatID = message.Chat.Id;
 
-            var commandTokens = message.Text.Split(' '); 
+            await ProcessCommand(client, chatID, messageText, ct);
+        }
+
+        private async Task ProcessCommand(ITelegramBotClient client, long chatID, string messageText, CancellationToken ct)
+        {
+            var commandTokens = messageText.Split(' ');
             if (commandTokens.Length == 0)
             {
                 await client.SendTextMessageAsync(chatID, "Empty string. Can not execute");
@@ -64,9 +91,8 @@ namespace GSheetsEditor.Services
             else
                 commandArgument = new object();
 
-            var executionResult = await _commandsService.ExecuteAsync(commandTokens[0], commandArgument);
-
-            //await client.SendTextMessageAsync(chatID, executionResult?.Result?.ToString());
+            var commandParameter = new CommandParameter(chatID, commandArgument);
+            var executionResult = await _commandsService.ExecuteAsync(commandTokens[0], commandParameter);
             await RouteReply(chatID, client, executionResult);
         }
 
@@ -92,14 +118,17 @@ namespace GSheetsEditor.Services
                 {
                     await using Stream stream = new FileStream(((Uri)commandResult.Result).LocalPath, FileMode.Open, FileAccess.Read);
                     await client.SendDocumentAsync(chatID, new InputOnlineFile(stream, $"table_tableid.xlsx"));
+
+#pragma warning disable CS4014 //Ye, ye, VS, not awaited task... I actually know what I'm doing here, ok?
                     Task.Run(async () => 
                     {
                         await Task.Delay(3000);
                         System.IO.File.Delete(((Uri)commandResult.Result).LocalPath);
                     });
+#pragma warning restore CS4014
                 }
                 else 
-                    await client.SendTextMessageAsync(chatID, commandResult.Result.ToString());
+                    await client.SendTextMessageAsync(chatID, commandResult.Result.ToString(), replyMarkup: commandResult.ReplyMarkup);
             }
 
             catch (ApiRequestException exception)
