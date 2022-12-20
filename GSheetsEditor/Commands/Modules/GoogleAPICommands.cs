@@ -51,7 +51,7 @@ namespace GSheetsEditor.Commands.Modules
         public static CommandExecutionResult ReadData(CommandParameter arg)
         {
             if (arg == null)
-                throw new ArgumentNullException(nameof(arg), "Caller API sends an null command argument");
+                throw new ArgumentNullException(nameof(arg), "Caller API sends null command argument");
 
             if (!GetActualSpreadsheetIDForUser(arg.UserID, out string spreadsheetID))
             {
@@ -81,6 +81,15 @@ namespace GSheetsEditor.Commands.Modules
             {
                 return new CommandExecutionResult($"Google API method exception thrown: {ex.Message}");
             }
+        }
+
+        [Command("/select")]
+        public static CommandExecutionResult SelectData(CommandParameter arg)
+        {
+            if (arg == null)
+                throw new ArgumentNullException(nameof(arg), "Caller API sends null command argument");
+
+            return new CommandExecutionResult("Not implemented now");
         }
 
         [Command("/write")]
@@ -191,7 +200,19 @@ namespace GSheetsEditor.Commands.Modules
             try
             {
                 var spreadsheet = new Spreadsheet() { Properties = new SpreadsheetProperties() };
-                var title = pars.GetType() == typeof(string) ? pars.ToString() : $"NewSpreadsheet-{DateTime.Now}";
+                
+                string title;
+                if (pars.GetType() == typeof(string))
+                {
+                    title = pars.ToString();
+                }
+                else if (pars.GetType() == typeof(List<string>))
+                {
+                    title = string.Join(" ", (IList<string>)pars);
+                }
+                else
+                    title = $"New Spreadsheet - At {DateTime.Now}";
+
                 spreadsheet.Properties.Title = title;
                 var createdSpreadsheet = _sheetsService.Spreadsheets.Create(spreadsheet).Execute();
 
@@ -235,18 +256,27 @@ namespace GSheetsEditor.Commands.Modules
                 var sheets = _boundSpreadsheets[arg.UserID].Select(sheet => sheet.Properties?.Title ?? "Untitled sheet").ToList();
 
                 var count = 1;
-                var inlineKeyboardButtons = new List<InlineKeyboardButton>();
+                var inlineKeyboardButtons = new List<List<InlineKeyboardButton>>();
 
                 foreach (var sheet in sheets)
                 {
-                    inlineKeyboardButtons.Add(InlineKeyboardButton.WithCallbackData($"{count} : {sheet}", $"/switch {count - 1}"));
+                    inlineKeyboardButtons.Add(
+                        new List<InlineKeyboardButton>() { InlineKeyboardButton.WithCallbackData($"{count} : {sheet}", $"/switch {count - 1}") });
+                    count++;
                 }
 
                 return new CommandExecutionResult("Please, select spreadsheet to switch onto") { ReplyMarkup = new InlineKeyboardMarkup(inlineKeyboardButtons) };
             }
             if (int.TryParse(pars.ToString(), out int selection))
             {
-                _boundSpreadsheets[arg.UserID].SwitchTo(int.Parse(pars.ToString()));
+                try
+                {
+                    _boundSpreadsheets[arg.UserID].SwitchTo(int.Parse(pars.ToString()));
+                }
+                catch (ArgumentOutOfRangeException e)
+                {
+                    return new CommandExecutionResult($"Index {int.Parse(pars.ToString())} out of range");
+                }
                 return new CommandExecutionResult($"Switched to {_boundSpreadsheets[arg.UserID].Current.Properties.Title}");
             }
 
@@ -314,7 +344,7 @@ namespace GSheetsEditor.Commands.Modules
                 }
                 rowFrom++;
                 column = columnFrom;
-                result.Append("\n");
+                result.Append('\n');
             }
 
             return result.ToString();
