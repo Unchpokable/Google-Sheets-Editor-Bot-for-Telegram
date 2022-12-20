@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Telegram.Bot.Types.InputFiles;
+﻿using Telegram.Bot.Types.ReplyMarkups;
 
 namespace GSheetsEditor.Commands
 {
@@ -26,6 +21,7 @@ namespace GSheetsEditor.Commands
         }
 
         public object Result { get; init; }
+        public IReplyMarkup? ReplyMarkup { get; init; }
         public Type ResultType { get; init; }
         public bool IsSuccess { get; init; }
     }

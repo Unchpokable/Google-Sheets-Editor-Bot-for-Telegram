@@ -1,21 +1,15 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace GSheetsEditor.Commands
+﻿namespace GSheetsEditor.Commands
 {
     internal class Command
     {
-        public Command(Func<object, CommandExecutionResult> action)
+        public Command(Func<CommandParameter, CommandExecutionResult> action)
         {
             _execute = action;
         }
 
-        private Func<object, CommandExecutionResult> _execute;
+        private Func<CommandParameter, CommandExecutionResult> _execute;
 
-        public CommandExecutionResult Execute(object arg, bool supressExceptionThrows = false)
+        public CommandExecutionResult Execute(CommandParameter arg, bool supressExceptionThrows = false)
         {
             try
             {
