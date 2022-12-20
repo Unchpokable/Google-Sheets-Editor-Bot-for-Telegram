@@ -110,8 +110,10 @@ namespace GSheetsEditor.Services
         private async Task RouteReply(ChatId chatID, ITelegramBotClient client, CommandExecutionResult commandResult)
         {
             if (commandResult == null)
+            {
                 await client.SendTextMessageAsync(chatID, "Command has not returned reply");
-
+                return;
+            }
             try
             {
                 if (commandResult.ResultType == typeof(Uri))
