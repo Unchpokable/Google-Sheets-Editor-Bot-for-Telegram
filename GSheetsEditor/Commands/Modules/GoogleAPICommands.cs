@@ -283,6 +283,50 @@ namespace GSheetsEditor.Commands.Modules
             return new CommandExecutionResult("Invalid argument for /switch command. Please, type /switch without arguments to get selection keyboard or /switch {index} to manually switch to spreadsheet you want");
         }
 
+#if DEBUG
+        [Command("/cleardrive")]
+        public static CommandExecutionResult ClearDrive(CommandParameter arg)
+        {
+            var files = _driveService.Files.List();
+            files.Q = "mimeType = 'application/vnd.google-apps.spreadsheet'";
+            var response = files.Execute();
+            var counter = 0;
+            var failcounter = 0;
+            var resplystring = new StringBuilder();
+
+            foreach (var file in response.Files)
+            {
+                try
+                {
+                    _driveService.Files.Delete(file.Id).Execute();
+                    counter++;
+                }
+                catch
+                {
+                    failcounter++;
+                }
+            }
+
+            return new CommandExecutionResult($"Successfully removed {counter} files. {failcounter} files remove fail");
+        }
+
+        [Command("/listdrive")]
+        public static CommandExecutionResult ListBotDrive(CommandParameter arg) 
+        {
+            var files = _driveService.Files.List();
+            files.Q = "mimeType = 'application/vnd.google-apps.spreadsheet'";
+            var response = files.Execute();
+
+            var result = new StringBuilder();
+
+            foreach (var file in response.Files)
+            {
+                result.Append($"{file.Id}\n");
+            }
+
+            return new CommandExecutionResult(result.ToString());
+        } 
+#endif
         private static bool GetActualSpreadsheetIDForUser(long uID, out string spreadsheet)
         {
             if (!_boundSpreadsheets.ContainsKey(uID))
