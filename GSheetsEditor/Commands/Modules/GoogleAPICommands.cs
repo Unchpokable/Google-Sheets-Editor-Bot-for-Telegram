@@ -1,5 +1,4 @@
-﻿using GSheetsEditor.Commands.Assembly;
-using Google.Apis.Sheets;
+﻿using GSheetsEditor.Commands.Attributes;
 using Google.Apis.Sheets.v4;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Services;
@@ -8,7 +7,7 @@ using System.Text;
 using GSheetsEditor.Extensions;
 using Google.Apis.Sheets.v4.Data;
 using Google.Apis.Drive.v3;
-using Telegram.Bot.Types.InputFiles;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace GSheetsEditor.Commands.Modules
 {
@@ -21,9 +20,12 @@ namespace GSheetsEditor.Commands.Modules
         private static readonly string _baseSheet = "Sheet1";
         private static SheetsService _sheetsService;
         private static DriveService _driveService;
+        private static Dictionary<long, SpreadsheetsCollection> _boundSpreadsheets;
 
         static GoogleAPICommands()
         {
+            _boundSpreadsheets = new Dictionary<long, SpreadsheetsCollection>();
+
             GoogleCredential credentials;
 
             using (var file = new FileStream("GoogleApiCredentials.json", FileMode.Open, FileAccess.Read))
@@ -38,7 +40,7 @@ namespace GSheetsEditor.Commands.Modules
                 ApplicationName = _applicationName,
             });
 
-            _driveService = new DriveService(new BaseClientService.Initializer() 
+            _driveService = new DriveService(new BaseClientService.Initializer()
             {
                 HttpClientInitializer = credentials,
                 ApplicationName = _applicationName,
@@ -46,8 +48,18 @@ namespace GSheetsEditor.Commands.Modules
         }
 
         [Command("/read")]
-        public static CommandExecutionResult ReadData(object parameter)
+        public static CommandExecutionResult ReadData(CommandParameter arg)
         {
+            if (arg == null)
+                throw new ArgumentNullException(nameof(arg), "Caller API sends an null command argument");
+
+            if (!GetActualSpreadsheetIDForUser(arg.UserID, out string spreadsheetID))
+            {
+                return new CommandExecutionResult($"No spreadsheets bound to user {arg.UserID}. Please, create a new spreadsheet using command /new or bind existing spreadsheet using commnad /bind");
+            }
+
+            var parameter = arg?.CommandArgs;
+
             if (parameter == null || parameter.GetType() == typeof(object))
             {
                 return new CommandExecutionResult("Usage: /read {cell_from:cell_to} for fetch multiple values or /read {cell} for read single value");
@@ -60,7 +72,7 @@ namespace GSheetsEditor.Commands.Modules
 
             try
             {
-                var value = _sheetsService.Spreadsheets.Values.Get(_defaultSpreadsheetID, $"{_baseSheet}!{cell}").Execute().Values;
+                var value = _sheetsService.Spreadsheets.Values.Get(spreadsheetID, $"{_baseSheet}!{cell}").Execute().Values;
                 if (value == null)
                     return new CommandExecutionResult("Empty Cell");
                 return new CommandExecutionResult(TableFetchedRangeToString(value, cell[0], int.Parse(cell.From(1).To(':'))));
@@ -72,8 +84,18 @@ namespace GSheetsEditor.Commands.Modules
         }
 
         [Command("/write")]
-        public static CommandExecutionResult WriteData(object parameter)
+        public static CommandExecutionResult WriteData(CommandParameter arg)
         {
+            if (arg == null)
+                throw new ArgumentNullException(nameof(arg), "Caller API sends an null command argument");
+
+            if (!GetActualSpreadsheetIDForUser(arg.UserID, out string spreadsheetID))
+            {
+                return new CommandExecutionResult($"No spreadsheets bound to user {arg.UserID}. Please, create a new spreadsheet using command /new or bind existing spreadsheet using commnad /bind");
+            }
+
+            var parameter = arg?.CommandArgs;
+
             // CommandArgs awaited structure: string`[range, ..args <- at least one]
             if (parameter is not IList<string> commandArgs)
             {
@@ -85,7 +107,7 @@ namespace GSheetsEditor.Commands.Modules
                 return new CommandExecutionResult("Invalid argument. Usage: /write {range} {list_of_values} for multiple values or /write {cell} {single_value} for write single value in specified cell");
             }
 
-            if (!ValidateCell(commandArgs[0], out CommandExecutionResult errorMessage)) 
+            if (!ValidateCell(commandArgs[0], out CommandExecutionResult errorMessage))
                 return errorMessage;
 
             var valuesToWrite = commandArgs.Skip(1).Select(v => (object)v.ToString()).ToList();
@@ -96,20 +118,30 @@ namespace GSheetsEditor.Commands.Modules
             valueRange.Values = new List<IList<object>> { valuesToWrite }; //TODO: Fix that it tries to write all data in single row
             try
             {
-                var appendRequest = _sheetsService.Spreadsheets.Values.Update(valueRange, _defaultSpreadsheetID, cell);
+                var appendRequest = _sheetsService.Spreadsheets.Values.Update(valueRange, spreadsheetID, cell);
                 appendRequest.ValueInputOption = SpreadsheetsResource.ValuesResource.UpdateRequest.ValueInputOptionEnum.USERENTERED;
                 var appendResponce = appendRequest.Execute();
                 return new CommandExecutionResult($"Spreadsheet updated");
             }
-            catch ( Exception ex )
+            catch (Exception ex)
             {
                 return new CommandExecutionResult($"Google API method exception thrown: {ex.Message}");
             }
         }
 
         [Command("/export")]
-        public static CommandExecutionResult ExportSpreadsheet(object parameter)
+        public static CommandExecutionResult ExportSpreadsheet(CommandParameter arg)
         {
+            if (arg == null)
+                throw new ArgumentNullException(nameof(arg), "Caller API sends an null command argument");
+
+            if (!GetActualSpreadsheetIDForUser(arg.UserID, out string spreadsheetID))
+            {
+                return new CommandExecutionResult($"No spreadsheets bound to user {arg.UserID}. Please, create a new spreadsheet using command /new or bind existing spreadsheet using commnad /bind");
+            }
+
+            var parameter = arg?.CommandArgs;
+
             var request = _driveService.Files.List();
             request.Q = "mimeType = 'application/vnd.google-apps.spreadsheet'";
             var response = request.Execute();
@@ -117,12 +149,12 @@ namespace GSheetsEditor.Commands.Modules
             if (response == null)
                 return new CommandExecutionResult("Drive Error: No such spreadsheet");
 
-            var requestedSpreadsheet = response.Files.FirstOrDefault(file => file.Id == _defaultSpreadsheetID);
+            var requestedSpreadsheet = response.Files.FirstOrDefault(file => file.Id == spreadsheetID);
 
             if (requestedSpreadsheet == null)
                 return new CommandExecutionResult("Drive Error: No such spreadsheet");
 
-            var localPath = $"{AppContext.BaseDirectory}\\local-{_defaultSpreadsheetID}.xlsx";
+            var localPath = $"{AppContext.BaseDirectory}\\local-{spreadsheetID}.xlsx";
 
 
             using (var localFile = new FileStream(localPath, FileMode.Create, FileAccess.ReadWrite))
@@ -144,6 +176,97 @@ namespace GSheetsEditor.Commands.Modules
                 return new CommandExecutionResult(fileUri);
             }
 
+        }
+
+        [Command("/new")]
+        public static CommandExecutionResult CreateNewSpreadsheet(CommandParameter arg)
+        {
+            if (arg == null)
+                throw new ArgumentNullException(nameof(arg), "Caller API sends an null command argument");
+
+            var pars = arg.CommandArgs;
+
+            if (pars == null)
+                return new CommandExecutionResult("Command execution failed: no requiered parameters given.");
+            try
+            {
+                var spreadsheet = new Spreadsheet() { Properties = new SpreadsheetProperties() };
+                var title = pars.GetType() == typeof(string) ? pars.ToString() : $"NewSpreadsheet-{DateTime.Now}";
+                spreadsheet.Properties.Title = title;
+                var createdSpreadsheet = _sheetsService.Spreadsheets.Create(spreadsheet).Execute();
+
+                if (!_boundSpreadsheets.ContainsKey(arg.UserID))
+                    _boundSpreadsheets.Add(arg.UserID, new SpreadsheetsCollection());
+
+                _boundSpreadsheets[arg.UserID].Add(createdSpreadsheet);
+                return new CommandExecutionResult($"Created spreadsheet: {createdSpreadsheet.Properties.Title}, with ID: {createdSpreadsheet.SpreadsheetId}");
+            }
+            catch (Exception e)
+            {
+                return new CommandExecutionResult($"Error during command execution: {e.Message}");
+            }
+        }
+
+        [Command("/sheets")]
+        public static CommandExecutionResult ShowAllUserSpreadsheets(CommandParameter arg)
+        {
+            if (arg == null)
+                throw new ArgumentNullException(nameof(arg), "Caller API sends an null command argument");
+
+            if (_boundSpreadsheets.Keys.Count == 0)
+                return new CommandExecutionResult($"No sheets bound to user {arg.UserID}");
+
+            return new CommandExecutionResult(string.Join('\n', _boundSpreadsheets[arg.UserID]));
+        }
+
+        [Command("/switch")]
+        public static CommandExecutionResult SwitchUserSpreadsheet(CommandParameter arg)
+        {
+            if (arg == null)
+                throw new ArgumentNullException(nameof(arg), "Caller API sends an null command argument");
+
+            if (_boundSpreadsheets.Keys.Count == 0)
+                return new CommandExecutionResult($"No sheets bound to user {arg.UserID}");
+
+            var pars = arg.CommandArgs;
+
+            if (pars.GetType() == typeof(object) || pars == null) // User calls /switch without arguments
+            {
+                var sheets = _boundSpreadsheets[arg.UserID].Select(sheet => sheet.Properties?.Title ?? "Untitled sheet").ToList();
+
+                var count = 1;
+                var inlineKeyboardButtons = new List<InlineKeyboardButton>();
+
+                foreach (var sheet in sheets)
+                {
+                    inlineKeyboardButtons.Add(InlineKeyboardButton.WithCallbackData($"{count} : {sheet}", $"/switch {count - 1}"));
+                }
+
+                return new CommandExecutionResult("Please, select spreadsheet to switch onto") { ReplyMarkup = new InlineKeyboardMarkup(inlineKeyboardButtons) };
+            }
+            if (int.TryParse(pars.ToString(), out int selection))
+            {
+                _boundSpreadsheets[arg.UserID].SwitchTo(int.Parse(pars.ToString()));
+                return new CommandExecutionResult($"Switched to {_boundSpreadsheets[arg.UserID].Current.Properties.Title}");
+            }
+
+            return new CommandExecutionResult("Invalid argument for /switch command. Please, type /switch without arguments to get selection keyboard or /switch {index} to manually switch to spreadsheet you want");
+        }
+
+        private static bool GetActualSpreadsheetIDForUser(long uID, out string spreadsheet)
+        {
+            if (!_boundSpreadsheets.ContainsKey(uID))
+            {
+#if DEBUG //It's OK when debug build uses some default spreadsheet for tests that i have access to, but its NOT OK for release build
+                spreadsheet = _defaultSpreadsheetID;
+                return true;
+#else
+                return false;
+#endif
+            }
+            else
+                spreadsheet = _boundSpreadsheets[uID].Current.SpreadsheetId;
+            return true;
         }
 
         private static bool ValidateCell(object parameter, out CommandExecutionResult errorMessage)
