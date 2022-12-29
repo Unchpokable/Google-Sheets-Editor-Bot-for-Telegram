@@ -48,6 +48,33 @@ namespace GSheetsEditor.Commands
 #endif
         }
 
+        public void BindAssembly(Assembly assembly)
+        {
+            if (assembly == null) throw new ArgumentNullException(nameof(assembly));
+
+            var potentialCommandContainers = assembly.GetTypes().Where(type => type.GetCustomAttribute<CommandModuleAttribute>() != null).ToList();
+
+            var potentialCommands = potentialCommandContainers
+                .SelectMany(module => module.GetMethods()
+                                            .Where(method => method.GetCustomAttribute<CommandAttribute>() != null)
+                                            .Select(method => new CommandMethodInfo(method.GetCustomAttribute<CommandAttribute>().Command, method)))
+                .ToList();
+
+            if (potentialCommands.Count == 0)
+            {
+#if DEBUG
+                Console.WriteLine($"[{DateTime.Now} :: ERR] No command modules found. Commands not loaded");
+#endif  
+                return;
+            }
+
+            var executableCommands = potentialCommands.Where(AssertMethodMatchDefaultCommandSignature).ToList();
+            executableCommands.ForEach(Bind);
+#if DEBUG
+            Console.WriteLine($"[{DateTime.Now} :: INFO] Binding commands completed. {potentialCommandContainers.Count} assemblies processed, {potentialCommands.Count} commands loaded");
+#endif
+        }
+
         public async Task<CommandExecutionResult> ExecuteAsync(string command, CommandParameter arg)
         {
             if (!_bindedCommands.ContainsKey(command))
