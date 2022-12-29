@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using Telegram.Bot;
@@ -29,7 +30,7 @@ namespace GSheetsEditor.Services
             };
 
             _commandsService = new CommandExecutionBinder();
-            _commandsService.BindModule(typeof(GoogleAPICommands));
+            _commandsService.BindAssembly(Assembly.GetExecutingAssembly());
 
             _client.StartReceiving(HandleUpdateAsync, HandlePollingErrorAsync, recieverOptions, cancellationToken: cts.Token);
 #if DEBUG
@@ -63,17 +64,26 @@ namespace GSheetsEditor.Services
 
         private async Task ProcessCommand(ITelegramBotClient client, Update update, CancellationToken ct)
         {
+            // Do not write code at 5 A.M.
             if (update.Message is not { } message)
                 return;
-            if (message.Text is not { } messageText)
-                return;
+
+            string command = "";
+
+            if (update.Message.Text == null)
+            {
+                if (update.Message.Caption != null)
+                    command = update.Message.Caption;
+            }
+            else 
+                command = update.Message.Text;
 
             var chatID = message.Chat.Id;
 
-            await ProcessCommand(client, chatID, messageText, ct);
+            await ProcessCommand(client, chatID, command, ct, update.Message.Document);
         }
 
-        private async Task ProcessCommand(ITelegramBotClient client, long chatID, string messageText, CancellationToken ct)
+        private async Task ProcessCommand(ITelegramBotClient client, long chatID, string messageText, CancellationToken ct, Document attachedFile = null)
         {
             var commandTokens = messageText.Split(' ');
             if (commandTokens.Length == 0)
@@ -92,8 +102,24 @@ namespace GSheetsEditor.Services
                 commandArgument = new object();
 
             var commandParameter = new CommandParameter(chatID, commandArgument);
+
+            string attachedFileLocalPath = null;
+
+            if (attachedFile != null)
+            {
+                attachedFileLocalPath = $"{AppContext.BaseDirectory}\\{attachedFile.FileName}";
+                await using var fileStream = new FileStream(attachedFileLocalPath, FileMode.Create, FileAccess.Write);
+                await client.DownloadFileAsync((await client.GetFileAsync(attachedFile.FileId)).FilePath, fileStream);
+                commandParameter.AttachedFile = attachedFileLocalPath;
+            }
+
             var executionResult = await _commandsService.ExecuteAsync(commandTokens[0], commandParameter);
             await RouteReply(chatID, client, executionResult);
+
+            if (attachedFileLocalPath != null)
+            {
+                System.IO.File.Delete(attachedFileLocalPath);
+            }
         }
 
         private async Task HandlePollingErrorAsync(ITelegramBotClient client, Exception exception, CancellationToken ct)
