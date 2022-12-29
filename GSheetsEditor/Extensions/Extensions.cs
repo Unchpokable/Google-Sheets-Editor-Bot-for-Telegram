@@ -26,5 +26,18 @@ namespace GSheetsEditor.Extensions
             }
             return sb.ToString();
         }
+
+        public static IEnumerable<TItem> Repeat<TItem>(this TItem item, int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                yield return item;
+            }
+        }
+
+        public static string AsString<T>(this IEnumerable<T> origin, char sep)
+        {
+            return string.Join(sep, origin);
+        }
     }
 }
