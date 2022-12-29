@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace GSheetsEditor.Commands
+﻿namespace GSheetsEditor.Commands
 {
     internal class CommandParameter
     {
@@ -16,5 +10,10 @@ namespace GSheetsEditor.Commands
 
         public long UserID { get; init; }
         public object CommandArgs { get; init; }
+
+        /// <summary>
+        /// Gets local file path to file attached to message 
+        /// </summary>
+        public string? AttachedFile { get; set; }
     }
 }
